@@ -86,3 +86,6 @@ pytest_embedded_log/
 
 # idf-component-manager output
 dependencies.lock
+
+# ide bullshit
+.vscode/
