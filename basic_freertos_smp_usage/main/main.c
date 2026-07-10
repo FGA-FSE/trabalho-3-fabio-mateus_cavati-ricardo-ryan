@@ -45,7 +45,7 @@ static void configurar_botoes(void)
     gpio_config_t io_conf = {
         .pin_bit_mask = mascara_pinos,
         .mode = GPIO_MODE_INPUT,
-        // Debounce já é feito em hardware (RC) nesses botões
+        
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
@@ -58,7 +58,7 @@ static void configurar_joystick_switch(void)
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << JOY_MS_GPIO),
         .mode = GPIO_MODE_INPUT,
-        // Switch de joystick normalmente é ativo em nível baixo (aperta = 0)
+        
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
@@ -74,7 +74,7 @@ static void configurar_adc(void)
     ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc1_handle));
 
     adc_oneshot_chan_cfg_t chan_config = {
-        .atten = ADC_ATTEN_DB_12, // faixa ~0-3.3V
+        .atten = ADC_ATTEN_DB_12, 
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, JOY_X_ADC_CHANNEL, &chan_config));
