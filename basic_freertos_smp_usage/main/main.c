@@ -81,6 +81,13 @@ static void configurar_adc(void)
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, JOY_Y_ADC_CHANNEL, &chan_config));
 }
 
+// ---------------- Configurações da Pressão Simulada ----------------
+#define BOTAO_PRESSIONADO_NIVEL   0      // 1 se ativo-alto (pull-down físico), 0 se ativo-baixo (pull-up físico)
+#define PRESSAO_INICIAL           10.0f  // Pressão inicial ao apertar o botão
+#define PRESSAO_MAXIMA            100.0f // Pressão máxima simulada
+#define PRESSAO_INCREMENTO_SEG    15.0f  // Quantidade de pressão que aumenta por segundo pressionado
+#define PRINT_INTERVAL_MS         200    // Intervalo de print no serial enquanto segura (em milissegundos)
+
 void app_main(void)
 {
     configurar_botoes();
@@ -88,24 +95,59 @@ void app_main(void)
     configurar_adc();
 
     ESP_LOGI(TAG, "Iniciando teste: %d botoes + joystick (X/Y/MS)", NUM_BOTOES);
+    ESP_LOGI(TAG, "Modo de simulação de pressão ativado (Botão pressionado nível: %d)", BOTAO_PRESSIONADO_NIVEL);
 
+    // Estados e variáveis para simulação de pressão nos botões
     int niveis_anteriores[NUM_BOTOES];
+    float pressao_atual[NUM_BOTOES];
+    int contadores_print[NUM_BOTOES];
+
     for (int i = 0; i < NUM_BOTOES; i++) {
         niveis_anteriores[i] = gpio_get_level(botoes[i]);
+        pressao_atual[i] = 0.0f;
+        contadores_print[i] = 0;
     }
     int ms_anterior = gpio_get_level(JOY_MS_GPIO);
 
     int contador = 0;
 
     while (1) {
-        // ---- Botões digitais ----
+        // ---- Botões digitais com simulação de pressão ----
         for (int i = 0; i < NUM_BOTOES; i++) {
             int nivel_atual = gpio_get_level(botoes[i]);
+            bool pressionado = (nivel_atual == BOTAO_PRESSIONADO_NIVEL);
+
+            // Detecta transição de estado do botão
             if (nivel_atual != niveis_anteriores[i]) {
-                ESP_LOGI(TAG, "%s (GPIO%d) -> %s",
-                         nomes_botoes[i], botoes[i],
-                         nivel_atual ? "ALTO (1)" : "BAIXO (0)");
+                if (pressionado) {
+                    // Botão acabou de ser pressionado
+                    pressao_atual[i] = PRESSAO_INICIAL;
+                    contadores_print[i] = 0;
+                    ESP_LOGI(TAG, "%s (GPIO%d) -> PRESSIONADO | Pressão Inicial: %.2f",
+                             nomes_botoes[i], botoes[i], pressao_atual[i]);
+                } else {
+                    // Botão acabou de ser solto
+                    ESP_LOGI(TAG, "%s (GPIO%d) -> SOLTO | Pressão Final: %.2f",
+                             nomes_botoes[i], botoes[i], pressao_atual[i]);
+                    pressao_atual[i] = 0.0f;
+                    contadores_print[i] = 0;
+                }
                 niveis_anteriores[i] = nivel_atual;
+            } else if (pressionado) {
+                // Botão continua pressionado (apertar e segurar)
+                // Aumenta a pressão proporcionalmente ao tempo decorrido (20ms por ciclo)
+                pressao_atual[i] += PRESSAO_INCREMENTO_SEG * 0.02f;
+                if (pressao_atual[i] > PRESSAO_MAXIMA) {
+                    pressao_atual[i] = PRESSAO_MAXIMA;
+                }
+
+                // Controla a frequência de print no serial
+                contadores_print[i]++;
+                if (contadores_print[i] >= (PRINT_INTERVAL_MS / 20)) {
+                    ESP_LOGI(TAG, "%s (GPIO%d) -> SEGURADO | Pressão: %.2f",
+                             nomes_botoes[i], botoes[i], pressao_atual[i]);
+                    contadores_print[i] = 0;
+                }
             }
         }
 
