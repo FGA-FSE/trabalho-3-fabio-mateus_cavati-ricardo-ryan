@@ -92,6 +92,7 @@ typedef struct{
     int *niveis_anteriores;
     float *pressao_atual;
     int *contadores_print;
+    int delay;
 
 } updater_pointer_pack;
 
@@ -139,7 +140,7 @@ static void task_atualizador_botao(void *pack){
                 }
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(ourpack->delay));
     }
 
     vTaskDelete(NULL);
@@ -184,6 +185,7 @@ void app_main(void)
     pack.niveis_anteriores = niveis_anteriores;
     pack.pressao_atual     = pressao_atual;
     pack.contadores_print  = contadores_print;
+    pack.delay = 10;
 
     ESP_LOGI(TAG, "Iniciando teste: %d botoes + joystick (X/Y/MS)", NUM_BOTOES);
     ESP_LOGI(TAG, "Modo de simulação de pressão ativado (Botão pressionado nível: %d)", BOTAO_PRESSIONADO_NIVEL);
