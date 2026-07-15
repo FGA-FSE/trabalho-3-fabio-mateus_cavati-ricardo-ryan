@@ -88,35 +88,25 @@ static void configurar_adc(void)
 #define PRESSAO_INCREMENTO_SEG    15.0f  // Quantidade de pressão que aumenta por segundo pressionado
 #define PRINT_INTERVAL_MS         200    // Intervalo de print no serial enquanto segura (em milissegundos)
 
-void app_main(void)
-{
-    configurar_botoes();
-    configurar_joystick_switch();
-    configurar_adc();
+typedef struct{
+    int *niveis_anteriores;
+    float *pressao_atual;
+    int *contadores_print;
 
-    ESP_LOGI(TAG, "Iniciando teste: %d botoes + joystick (X/Y/MS)", NUM_BOTOES);
-    ESP_LOGI(TAG, "Modo de simulação de pressão ativado (Botão pressionado nível: %d)", BOTAO_PRESSIONADO_NIVEL);
+} updater_pointer_pack;
 
-    // Estados e variáveis para simulação de pressão nos botões
-    int niveis_anteriores[NUM_BOTOES];
-    float pressao_atual[NUM_BOTOES];
-    int contadores_print[NUM_BOTOES];
+static void task_atualizador_botao(void *pack){
+    
+    updater_pointer_pack *ourpack = (updater_pointer_pack *) pack;
 
-    for (int i = 0; i < NUM_BOTOES; i++) {
-        niveis_anteriores[i] = gpio_get_level(botoes[i]);
-        pressao_atual[i] = 0.0f;
-        contadores_print[i] = 0;
-    }
-    int ms_anterior = gpio_get_level(JOY_MS_GPIO);
+    int   *niveis_anteriores = ourpack->niveis_anteriores;
+    float *pressao_atual     = ourpack->pressao_atual    ;
+    int   *contadores_print  = ourpack->contadores_print ;
 
-    int contador = 0;
-
-    while (1) {
-        // ---- Botões digitais com simulação de pressão ----
+    while(1){
         for (int i = 0; i < NUM_BOTOES; i++) {
             int nivel_atual = gpio_get_level(botoes[i]);
             bool pressionado = (nivel_atual == BOTAO_PRESSIONADO_NIVEL);
-
             // Detecta transição de estado do botão
             if (nivel_atual != niveis_anteriores[i]) {
                 if (pressionado) {
@@ -124,11 +114,11 @@ void app_main(void)
                     pressao_atual[i] = PRESSAO_INICIAL;
                     contadores_print[i] = 0;
                     ESP_LOGI(TAG, "%s (GPIO%d) -> PRESSIONADO | Pressão Inicial: %.2f",
-                             nomes_botoes[i], botoes[i], pressao_atual[i]);
+                                nomes_botoes[i], botoes[i], pressao_atual[i]);
                 } else {
                     // Botão acabou de ser solto
                     ESP_LOGI(TAG, "%s (GPIO%d) -> SOLTO | Pressão Final: %.2f",
-                             nomes_botoes[i], botoes[i], pressao_atual[i]);
+                                nomes_botoes[i], botoes[i], pressao_atual[i]);
                     pressao_atual[i] = 0.0f;
                     contadores_print[i] = 0;
                 }
@@ -140,16 +130,78 @@ void app_main(void)
                 if (pressao_atual[i] > PRESSAO_MAXIMA) {
                     pressao_atual[i] = PRESSAO_MAXIMA;
                 }
-
                 // Controla a frequência de print no serial
                 contadores_print[i]++;
                 if (contadores_print[i] >= (PRINT_INTERVAL_MS / 20)) {
                     ESP_LOGI(TAG, "%s (GPIO%d) -> SEGURADO | Pressão: %.2f",
-                             nomes_botoes[i], botoes[i], pressao_atual[i]);
+                                nomes_botoes[i], botoes[i], pressao_atual[i]);
                     contadores_print[i] = 0;
                 }
             }
         }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    vTaskDelete(NULL);
+}
+
+typedef struct{
+    int *val_x;
+    int *val_y;
+    int delay;
+} joy_pointer_pack;
+
+static void task_atualizador_joystick(void *pack){
+    joy_pointer_pack* ourpack = (joy_pointer_pack*) pack;
+    while(1){
+        adc_oneshot_read(adc1_handle, JOY_X_ADC_CHANNEL, ourpack->val_x);
+        adc_oneshot_read(adc1_handle, JOY_Y_ADC_CHANNEL, ourpack->val_y);
+        vTaskDelay(pdMS_TO_TICKS(ourpack->delay));
+    }  
+    vTaskDelete(NULL);
+
+};
+
+
+void app_main(void)
+{
+    configurar_botoes();
+    configurar_joystick_switch();
+    configurar_adc();
+
+    // Estados e variáveis para simulação de pressão nos botões
+    int niveis_anteriores  [NUM_BOTOES];
+    float pressao_atual    [NUM_BOTOES];
+    int contadores_print   [NUM_BOTOES];
+    
+    for (int i = 0; i < NUM_BOTOES; i++) {
+        niveis_anteriores[i] = gpio_get_level(botoes[i]);
+        pressao_atual[i] = 0.0f;
+        contadores_print[i] = 0;
+    }
+
+    updater_pointer_pack pack;
+    pack.niveis_anteriores = niveis_anteriores;
+    pack.pressao_atual     = pressao_atual;
+    pack.contadores_print  = contadores_print;
+
+    ESP_LOGI(TAG, "Iniciando teste: %d botoes + joystick (X/Y/MS)", NUM_BOTOES);
+    ESP_LOGI(TAG, "Modo de simulação de pressão ativado (Botão pressionado nível: %d)", BOTAO_PRESSIONADO_NIVEL);
+
+    int ms_anterior = gpio_get_level(JOY_MS_GPIO);
+    int contador = 0, valor_x = 0, valor_y = 0; // joystick vars 
+
+    joy_pointer_pack pack2;
+    pack2.delay = 10;
+    pack2.val_x = &valor_x;
+    pack2.val_y = &valor_y;
+
+    xTaskCreate(task_atualizador_botao   , "buttonUpdater", 4096, (void *) &pack  , 3, NULL);  
+    xTaskCreate(task_atualizador_joystick, "joyUpdater"   , 4096, (void *) &pack2 , 3, NULL);
+    
+    while (1) {
+        // ---- Botões digitais com simulação de pressão ----
+        // deve rodar pelo task, teoricamente!
 
         // ---- Switch do joystick ----
         int ms_atual = gpio_get_level(JOY_MS_GPIO);
@@ -161,9 +213,6 @@ void app_main(void)
 
         // ---- Eixos analógicos (loga a cada ~500ms pra não spammar) ----
         if (contador % 25 == 0) {
-            int valor_x = 0, valor_y = 0;
-            adc_oneshot_read(adc1_handle, JOY_X_ADC_CHANNEL, &valor_x);
-            adc_oneshot_read(adc1_handle, JOY_Y_ADC_CHANNEL, &valor_y);
             ESP_LOGI(TAG, "Joystick X=%d Y=%d", valor_x, valor_y);
         }
 
