@@ -162,7 +162,8 @@ void esp_hidd_send_keyboard_value(uint16_t conn_id, key_mask_t special_key_mask,
 
 void esp_hidd_send_mouse_value(uint16_t conn_id, uint8_t mouse_button, int8_t mickeys_x, int8_t mickeys_y);
 
-void esp_hidd_send_joypack(uint16_t conn_id, uint8_t mouse_button, int8_t mickeys_x, int8_t mickeys_y);
+void esp_hidd_send_joypack(uint16_t conn_id, uint8_t b1, uint8_t b2, uint8_t b3,
+                           uint8_t b4, uint8_t b5, int8_t mickeys_x, int8_t mickeys_y);
 
 #ifdef __cplusplus
 }

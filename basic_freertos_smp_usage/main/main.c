@@ -38,7 +38,7 @@
 
 static uint16_t hid_conn_id = 0;
 static bool sec_conn = false;
-static bool send_volum_up = false;
+// static bool send_volum_up = false;
 #define CHAR_DECLARATION_SIZE   (sizeof(uint8_t))
 
 static void hidd_event_callback(esp_hidd_cb_event_t event, esp_hidd_cb_param_t *param);
@@ -345,7 +345,7 @@ static int8_t mapear_eixo_para_int8(int valor_adc)
 }
 
 
-static uint8_t mapear_botoes_para_bitmask(const float *pressoes)
+static uint8_t __attribute__((unused)) mapear_botoes_para_bitmask(const float *pressoes)
 {
     uint8_t mascara = 0;
 
@@ -358,20 +358,28 @@ static uint8_t mapear_botoes_para_bitmask(const float *pressoes)
     return mascara;
 }
 
-uint8_t botaoprauint8_t(float pressao);
+uint8_t botaoprauint8_t(float pressao)
+{
+    if (pressao <= 0.0f) {
+        return 0;
+    }
+    if (pressao >= 100.0f) {
+        return 255;
+    }
+    // Mapeia linearmente 0.0f - 100.0f para 0 - 255, arredondando com +0.5f antes do cast
+    return (uint8_t)((pressao / 100.0f) * 255.0f + 0.5f);
+}
 
 // Envia periodicamente o estado atual (botões + eixos) via HID sobre BLE.
 static void task_sender(void *pack)
 {
     sender_pack *ourpack = (sender_pack*) pack;
 
-    uint8_t buffer_botoes; // uint8_t, pronto para ir no relatório
     int8_t  buffer_x;
     int8_t  buffer_y;
 
     while (1) {
         // leitura já feita pelas outras tasks; aqui só convertemos para uint8_t/int8_t
-        buffer_botoes = mapear_botoes_para_bitmask(ourpack->pressures);
         buffer_x      = mapear_eixo_para_int8(*ourpack->val_x);
         buffer_y      = mapear_eixo_para_int8(*ourpack->val_y);
         //assumindo que funcao botaoprauint8_t devolve float 0 a 100.0 para valores que cabem num byte (0 a 255);
