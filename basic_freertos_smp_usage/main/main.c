@@ -182,9 +182,7 @@ static const char *nomes_botoes[NUM_BOTOES] = {
     "botao5",
 };
 
-// ---------------- Joystick analógico ----------------
-// ATENÇÃO: GPIO16 e GPIO17 NÃO têm ADC na ESP32 clássica.
-// Por isso X e Y foram movidos para pinos ADC1 (só entrada):
+
 #define JOY_X_ADC_CHANNEL ADC_CHANNEL_6 // GPIO34
 #define JOY_Y_ADC_CHANNEL ADC_CHANNEL_7 // GPIO35
 #define JOY_MS_GPIO       GPIO_NUM_17   // botao/switch do joystick (digital)
@@ -328,28 +326,60 @@ typedef struct{
     float *pressures;
 }sender_pack;
 
-//send pressure and joy vals like crazy!
-static void task_sender(void *pack){
-    uint8_t ourpressures[NUM_BOTOES];
-    uint8_t ourx;
-    uint8_t oury;
 
-    sender_pack *ourpack = (sender_pack*) pack;
-    while(1){
-        //actual reading is being done in tasks and registered directly into
-        for(int i = 0; i< NUM_BOTOES; i++){
-            ourpressures[i] = (int)(ourpack->pressures[i]);
-        }
-        //as all tasks are accessing same address, dereferencing should give actual value!
-        ourx = *ourpack->val_x;
-        oury = *ourpack->val_y; 
+#define JOY_ADC_MAX      4095
+#define JOY_ADC_CENTER   (JOY_ADC_MAX / 2)
 
+static int8_t mapear_eixo_para_int8(int valor_adc)
+{
+    int delta = valor_adc - JOY_ADC_CENTER;
+    int escalado = (delta * 127) / JOY_ADC_CENTER;
 
-
-
-        
+    if (escalado > 127) {
+        escalado = 127;
+    } else if (escalado < -127) {
+        escalado = -127;
     }
 
+    return (int8_t) escalado;
+}
+
+
+static uint8_t mapear_botoes_para_bitmask(const float *pressoes)
+{
+    uint8_t mascara = 0;
+
+    for (int i = 0; i < NUM_BOTOES; i++) {
+        if (pressoes[i] > 0.0f) {
+            mascara |= (1 << i);
+        }
+    }
+
+    return mascara;
+}
+
+// Envia periodicamente o estado atual (botões + eixos) via HID sobre BLE.
+static void task_sender(void *pack)
+{
+    sender_pack *ourpack = (sender_pack*) pack;
+
+    uint8_t buffer_botoes; // uint8_t, pronto para ir no relatório
+    int8_t  buffer_x;
+    int8_t  buffer_y;
+
+    while (1) {
+        // leitura já feita pelas outras tasks; aqui só convertemos para uint8_t/int8_t
+        buffer_botoes = mapear_botoes_para_bitmask(ourpack->pressures);
+        buffer_x      = mapear_eixo_para_int8(*ourpack->val_x);
+        buffer_y      = mapear_eixo_para_int8(*ourpack->val_y);
+
+        if (sec_conn) {
+            // chamada da função da API que efetivamente manda o relatório pelo GATT
+            esp_hidd_send_mouse_value(hid_conn_id, buffer_botoes, buffer_x, buffer_y);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
 }
 
 
@@ -442,11 +472,27 @@ void app_main(void)
     ///register the callback function to the gap module
     esp_ble_gap_register_callback(gap_event_handler);
     esp_hidd_register_callbacks(hidd_event_callback);
-    
+
+    // Parâmetros de segurança/pareamento BLE — sem isso o ESP_GAP_BLE_SEC_REQ_EVT
+    // e o ESP_GAP_BLE_AUTH_CMPL_EVT tratados em gap_event_handler não têm com o
+    // que negociar, e o pareamento fica inconsistente.
+    esp_ble_auth_req_t auth_req = ESP_LE_AUTH_BOND;     // bonding, sem MITM
+    esp_ble_io_cap_t   iocap    = ESP_IO_CAP_NONE;      // sem display/teclado no "controle"
+    uint8_t key_size = 16;
+    uint8_t init_key = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
+    uint8_t rsp_key  = ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK;
+
+    esp_ble_gap_set_security_param(ESP_BLE_SM_AUTHEN_REQ_MODE, &auth_req, sizeof(uint8_t));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_IOCAP_MODE, &iocap, sizeof(uint8_t));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_SET_INIT_KEY, &init_key, sizeof(uint8_t));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_SET_RSP_KEY, &rsp_key, sizeof(uint8_t));
+    esp_ble_gap_set_security_param(ESP_BLE_SM_MAX_KEY_SIZE, &key_size, sizeof(uint8_t));
+
     //end of bt part
 
     xTaskCreate(task_atualizador_botao   , "buttonUpdater", 4096, (void *) &pack  , 3, NULL);  // update button values
     xTaskCreate(task_atualizador_joystick, "joyUpdater"   , 4096, (void *) &pack2 , 3, NULL);  // update joystick values
+    xTaskCreate(task_sender              , "hidSender"    , 4096, (void *) &pack3 , 3, NULL);  // convert & send HID reports
     
     //then we leave app main to do the heavy lifting of sending ble hid packets inside this while!
     while (1) {
@@ -459,7 +505,7 @@ void app_main(void)
             ms_anterior = ms_atual;
         }
 
-        // ---- Eixos analógicos (loga a cada ~500ms pra não spammar) ----
+        // ---- Eixos analógicos 
         if (contador % 25 == 0) {
             ESP_LOGI(TAG, "Joystick X=%d Y=%d", valor_x, valor_y);
             contador -= contador;
