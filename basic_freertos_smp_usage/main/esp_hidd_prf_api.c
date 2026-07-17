@@ -18,7 +18,7 @@
 #define HID_LED_OUT_RPT_LEN         1
 
 // HID mouse input report length
-#define HID_MOUSE_IN_RPT_LEN        5
+#define HID_MOUSE_IN_RPT_LEN        7
 
 // HID consumer control input report length
 #define HID_CC_IN_RPT_LEN           2
@@ -139,26 +139,28 @@ void esp_hidd_send_mouse_value(uint16_t conn_id, uint8_t mouse_button, int8_t mi
     uint8_t buffer[HID_MOUSE_IN_RPT_LEN];
 
     buffer[0] = mouse_button;   // Buttons
-    buffer[1] = mickeys_x;           // X
-    buffer[2] = mickeys_y;           // Y
-    buffer[3] = 0;           // Wheel
-    buffer[4] = 0;           // AC Pan
+    buffer[1] = mickeys_x;      // X
+    buffer[2] = mickeys_y;      // Y
+    buffer[3] = 0;              // Wheel
+    buffer[4] = 0;              // AC Pan
 
     hid_dev_send_report(hidd_le_env.gatt_if, conn_id,
                         HID_RPT_ID_MOUSE_IN, HID_REPORT_TYPE_INPUT, HID_MOUSE_IN_RPT_LEN, buffer);
     return;
 }
 
-void esp_hidd_send_joypack(uint16_t conn_id, uint8_t mouse_button, int8_t mickeys_x, int8_t mickeys_y)
+void esp_hidd_send_joypack(uint16_t conn_id, uint8_t b1, uint8_t b2, uint8_t b3,
+                                             uint8_t b4, uint8_t b5, int8_t mickeys_x, int8_t mickeys_y)
 {
     uint8_t buffer[HID_MOUSE_IN_RPT_LEN];
 
-    buffer[0] = mouse_button;   // Buttons
-    buffer[1] = mickeys_x;           // X
-    buffer[2] = mickeys_y;           // Y
-    buffer[3] = 0;           // Wheel
-    buffer[4] = 0;           // AC Pan
-
+    buffer[0] = b1;       // Buttons
+    buffer[1] = b2;       // X
+    buffer[2] = b3;     // Y
+    buffer[3] = b4;     // Wheel
+    buffer[4] = b5;     // AC Pan
+    buffer[5] = mickeys_x;
+    buffer[6] = mickeys_y;
     hid_dev_send_report(hidd_le_env.gatt_if, conn_id,
                         HID_RPT_ID_MOUSE_IN, HID_REPORT_TYPE_INPUT, HID_MOUSE_IN_RPT_LEN, buffer);
     return;

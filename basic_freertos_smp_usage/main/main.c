@@ -358,6 +358,8 @@ static uint8_t mapear_botoes_para_bitmask(const float *pressoes)
     return mascara;
 }
 
+uint8_t botaoprauint8_t(float pressao);
+
 // Envia periodicamente o estado atual (botões + eixos) via HID sobre BLE.
 static void task_sender(void *pack)
 {
@@ -372,10 +374,12 @@ static void task_sender(void *pack)
         buffer_botoes = mapear_botoes_para_bitmask(ourpack->pressures);
         buffer_x      = mapear_eixo_para_int8(*ourpack->val_x);
         buffer_y      = mapear_eixo_para_int8(*ourpack->val_y);
-
+        //assumindo que funcao botaoprauint8_t devolve float 0 a 100.0 para valores que cabem num byte (0 a 255);
         if (sec_conn) {
             // chamada da função da API que efetivamente manda o relatório pelo GATT
-            esp_hidd_send_mouse_value(hid_conn_id, buffer_botoes, buffer_x, buffer_y);
+            esp_hidd_send_joypack(hid_conn_id, botaoprauint8_t(ourpack->pressures[0]), botaoprauint8_t(ourpack->pressures[1]),
+                                               botaoprauint8_t(ourpack->pressures[2]), botaoprauint8_t(ourpack->pressures[3]),
+                                               botaoprauint8_t(ourpack->pressures[4]), buffer_x, buffer_y);
         }
 
         vTaskDelay(pdMS_TO_TICKS(20));
